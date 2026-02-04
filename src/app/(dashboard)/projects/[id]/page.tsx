@@ -8,9 +8,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CommentsSection } from "@/components/comments-section";
 import { ProjectFormModal } from "@/components/project-form-modal";
 import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
+import { PlanEditor } from "@/components/plan-editor";
+import { TaskList } from "@/components/task-list";
+import { ProjectHistorySection } from "@/components/project-history";
 import { ArrowLeft, Pencil, Trash2, Star, ExternalLink } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { Project, Comment, RANKING_LABELS } from "@/lib/types";
+import {
+  Project,
+  Comment,
+  Task,
+  ProjectHistory,
+  RANKING_LABELS,
+} from "@/lib/types";
 import { toast } from "@/hooks/use-toast";
 
 export default function ProjectDetailPage() {
@@ -20,20 +29,33 @@ export default function ProjectDetailPage() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [history, setHistory] = useState<ProjectHistory[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const fetchProject = useCallback(async () => {
-    const [projectResult, commentsResult] = await Promise.all([
-      supabase.from("projects").select("*").eq("id", id).single(),
-      supabase
-        .from("comments")
-        .select("*")
-        .eq("project_id", id)
-        .order("created_at", { ascending: true }),
-    ]);
+    const [projectResult, commentsResult, tasksResult, historyResult] =
+      await Promise.all([
+        supabase.from("projects").select("*").eq("id", id).single(),
+        supabase
+          .from("comments")
+          .select("*")
+          .eq("project_id", id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("tasks")
+          .select("*")
+          .eq("project_id", id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("project_history")
+          .select("*")
+          .eq("project_id", id)
+          .order("entry_date", { ascending: false }),
+      ]);
 
     if (projectResult.error) {
       router.push("/projects");
@@ -42,6 +64,8 @@ export default function ProjectDetailPage() {
 
     setProject(projectResult.data as Project);
     setComments((commentsResult.data as Comment[]) ?? []);
+    setTasks((tasksResult.data as Task[]) ?? []);
+    setHistory((historyResult.data as ProjectHistory[]) ?? []);
     setLoading(false);
   }, [id, router]);
 
@@ -139,6 +163,7 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {/* Back button */}
       <Button
         variant="ghost"
         size="sm"
@@ -149,6 +174,7 @@ export default function ProjectDetailPage() {
         Back to Projects
       </Button>
 
+      {/* Header */}
       <div className="space-y-4">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
@@ -194,16 +220,6 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
-        {project.description && (
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm whitespace-pre-wrap">
-                {project.description}
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
         {(project.github_url || project.dashboard_url) && (
           <div className="flex items-center gap-3">
             {project.github_url && (
@@ -237,6 +253,41 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
+      {/* Description */}
+      {project.description && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm whitespace-pre-wrap">
+              {project.description}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Project Plan */}
+      <PlanEditor
+        projectId={project.id}
+        plan={project.plan}
+        onPlanUpdated={(plan) =>
+          setProject((prev) => (prev ? { ...prev, plan } : prev))
+        }
+      />
+
+      {/* Tasks */}
+      <TaskList
+        projectId={project.id}
+        tasks={tasks}
+        onTasksChanged={setTasks}
+      />
+
+      {/* History */}
+      <ProjectHistorySection
+        projectId={project.id}
+        entries={history}
+        onEntriesChanged={setHistory}
+      />
+
+      {/* Comments */}
       <div className="border-t pt-6">
         <CommentsSection
           comments={comments}
@@ -245,6 +296,7 @@ export default function ProjectDetailPage() {
         />
       </div>
 
+      {/* Modals */}
       <ProjectFormModal
         open={formOpen}
         onOpenChange={setFormOpen}

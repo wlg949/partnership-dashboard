@@ -23,7 +23,41 @@ ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all access to comments" ON comments
   FOR ALL USING (true) WITH CHECK (true);
 
--- 2. Clear existing sample data
+-- 2. Create tasks table
+CREATE TABLE IF NOT EXISTS tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT CHECK (status IN ('pending', 'in-progress', 'complete', 'cancelled')) DEFAULT 'pending',
+  due_date TIMESTAMPTZ,
+  cron_job_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  completion_notes TEXT
+);
+
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all access to tasks" ON tasks
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- 3. Create project_history table
+CREATE TABLE IF NOT EXISTS project_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  entry_date TIMESTAMPTZ DEFAULT NOW(),
+  summary TEXT NOT NULL,
+  details TEXT
+);
+
+ALTER TABLE project_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all access to project_history" ON project_history
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- 4. Add plan column to projects
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS plan TEXT;
+
+-- 5. Clear existing sample data
 DELETE FROM ideas;
 DELETE FROM projects;
 
