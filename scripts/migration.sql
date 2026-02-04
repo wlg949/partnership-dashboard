@@ -2,6 +2,10 @@
 -- Partnership Dashboard - Database Migration
 -- ============================================
 
+-- 0. Add ranking column to ideas and projects
+ALTER TABLE ideas ADD COLUMN IF NOT EXISTS ranking INTEGER DEFAULT 3;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS ranking INTEGER DEFAULT 3;
+
 -- 1. Create comments table
 CREATE TABLE IF NOT EXISTS comments (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,

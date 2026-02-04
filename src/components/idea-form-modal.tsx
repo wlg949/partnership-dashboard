@@ -20,7 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Idea } from "@/lib/types";
+import { Idea, RANKING_LABELS } from "@/lib/types";
+import { Star } from "lucide-react";
 
 interface IdeaFormModalProps {
   open: boolean;
@@ -31,6 +32,7 @@ interface IdeaFormModalProps {
     description: string;
     priority: "low" | "medium" | "high";
     status: "new" | "evaluating" | "approved" | "archived";
+    ranking: number;
   }) => Promise<void>;
 }
 
@@ -46,6 +48,7 @@ export function IdeaFormModal({
   const [status, setStatus] = useState<
     "new" | "evaluating" | "approved" | "archived"
   >("new");
+  const [ranking, setRanking] = useState(3);
   const [submitting, setSubmitting] = useState(false);
   const [titleError, setTitleError] = useState("");
 
@@ -58,11 +61,13 @@ export function IdeaFormModal({
         setDescription(idea.description || "");
         setPriority(idea.priority || "medium");
         setStatus(idea.status);
+        setRanking(idea.ranking ?? 3);
       } else {
         setTitle("");
         setDescription("");
         setPriority("medium");
         setStatus("new");
+        setRanking(3);
       }
       setTitleError("");
     }
@@ -83,6 +88,7 @@ export function IdeaFormModal({
         description: description.trim(),
         priority,
         status,
+        ranking,
       });
       onOpenChange(false);
     } finally {
@@ -168,6 +174,30 @@ export function IdeaFormModal({
                   <SelectItem value="archived">Archived</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Ranking</Label>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setRanking(value)}
+                  className="p-0.5"
+                >
+                  <Star
+                    className={`h-5 w-5 transition-colors ${
+                      value <= ranking
+                        ? "fill-yellow-400 text-yellow-400"
+                        : "text-muted-foreground/30"
+                    }`}
+                  />
+                </button>
+              ))}
+              <span className="text-xs text-muted-foreground ml-2">
+                {RANKING_LABELS[ranking]}
+              </span>
             </div>
           </div>
           <DialogFooter>

@@ -20,7 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Project } from "@/lib/types";
+import { Project, RANKING_LABELS } from "@/lib/types";
+import { Star } from "lucide-react";
 
 interface ProjectFormModalProps {
   open: boolean;
@@ -30,6 +31,7 @@ interface ProjectFormModalProps {
     name: string;
     description: string;
     status: "planning" | "in-progress" | "review" | "complete";
+    ranking: number;
     github_url: string;
     dashboard_url: string;
   }) => Promise<void>;
@@ -46,6 +48,7 @@ export function ProjectFormModal({
   const [status, setStatus] = useState<
     "planning" | "in-progress" | "review" | "complete"
   >("planning");
+  const [ranking, setRanking] = useState(3);
   const [githubUrl, setGithubUrl] = useState("");
   const [dashboardUrl, setDashboardUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -59,12 +62,14 @@ export function ProjectFormModal({
         setName(project.name);
         setDescription(project.description || "");
         setStatus(project.status);
+        setRanking(project.ranking ?? 3);
         setGithubUrl(project.github_url || "");
         setDashboardUrl(project.dashboard_url || "");
       } else {
         setName("");
         setDescription("");
         setStatus("planning");
+        setRanking(3);
         setGithubUrl("");
         setDashboardUrl("");
       }
@@ -86,6 +91,7 @@ export function ProjectFormModal({
         name: trimmedName,
         description: description.trim(),
         status,
+        ranking,
         github_url: githubUrl.trim(),
         dashboard_url: dashboardUrl.trim(),
       });
@@ -156,6 +162,30 @@ export function ProjectFormModal({
                 <SelectItem value="complete">Complete</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Ranking</Label>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setRanking(value)}
+                  className="p-0.5"
+                >
+                  <Star
+                    className={`h-5 w-5 transition-colors ${
+                      value <= ranking
+                        ? "fill-yellow-400 text-yellow-400"
+                        : "text-muted-foreground/30"
+                    }`}
+                  />
+                </button>
+              ))}
+              <span className="text-xs text-muted-foreground ml-2">
+                {RANKING_LABELS[ranking]}
+              </span>
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="project-github">GitHub URL</Label>

@@ -1,22 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { CommentsSection } from "@/components/comments-section";
 import { ProjectFormModal } from "@/components/project-form-modal";
 import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
-import { Plus, MessageSquare, Pencil, Trash2 } from "lucide-react";
+import { Plus, MessageSquare, Pencil, Trash2, Star } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { Project, Comment } from "@/lib/types";
+import { Project } from "@/lib/types";
 import { toast } from "@/hooks/use-toast";
 
 const columns = [
@@ -27,14 +20,12 @@ const columns = [
 ];
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>(
     {}
   );
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [projectComments, setProjectComments] = useState<Comment[]>([]);
-  const [loadingComments, setLoadingComments] = useState(false);
 
   // CRUD modal state
   const [formOpen, setFormOpen] = useState(false);
@@ -75,35 +66,12 @@ export default function ProjectsPage() {
     fetchProjects();
   }, [fetchProjects]);
 
-  async function openProjectDetail(project: Project) {
-    setSelectedProject(project);
-    setLoadingComments(true);
-
-    const { data } = await supabase
-      .from("comments")
-      .select("*")
-      .eq("project_id", project.id)
-      .order("created_at", { ascending: true });
-
-    setProjectComments((data as Comment[]) ?? []);
-    setLoadingComments(false);
-  }
-
-  function handleCommentAdded(comment: Comment) {
-    setProjectComments((prev) => [...prev, comment]);
-    if (selectedProject) {
-      setCommentCounts((prev) => ({
-        ...prev,
-        [selectedProject.id]: (prev[selectedProject.id] || 0) + 1,
-      }));
-    }
-  }
-
   // --- Create / Edit ---
   async function handleProjectSubmit(data: {
     name: string;
     description: string;
     status: "planning" | "in-progress" | "review" | "complete";
+    ranking: number;
     github_url: string;
     dashboard_url: string;
   }) {
@@ -115,6 +83,7 @@ export default function ProjectsPage() {
         name: data.name,
         description: data.description || null,
         status: data.status,
+        ranking: data.ranking,
         github_url: data.github_url || null,
         dashboard_url: data.dashboard_url || null,
         updated_at: new Date().toISOString(),
@@ -122,9 +91,6 @@ export default function ProjectsPage() {
       setProjects((prev) =>
         prev.map((p) => (p.id === editingProject.id ? updated : p))
       );
-      if (selectedProject?.id === editingProject.id) {
-        setSelectedProject(updated);
-      }
 
       const { error } = await supabase
         .from("projects")
@@ -132,6 +98,7 @@ export default function ProjectsPage() {
           name: data.name,
           description: data.description || null,
           status: data.status,
+          ranking: data.ranking,
           github_url: data.github_url || null,
           dashboard_url: data.dashboard_url || null,
         })
@@ -139,9 +106,6 @@ export default function ProjectsPage() {
 
       if (error) {
         setProjects(previous);
-        if (selectedProject?.id === editingProject.id) {
-          setSelectedProject(editingProject);
-        }
         toast({
           title: "Error updating project",
           description: error.message,
@@ -162,6 +126,7 @@ export default function ProjectsPage() {
           name: data.name,
           description: data.description || null,
           status: data.status,
+          ranking: data.ranking,
           github_url: data.github_url || null,
           dashboard_url: data.dashboard_url || null,
         })
@@ -191,9 +156,6 @@ export default function ProjectsPage() {
 
     const previous = projects;
     setProjects((prev) => prev.filter((p) => p.id !== deletingProject.id));
-    if (selectedProject?.id === deletingProject.id) {
-      setSelectedProject(null);
-    }
 
     const { error } = await supabase
       .from("projects")
@@ -285,7 +247,7 @@ export default function ProjectsPage() {
                     <Card
                       key={project.id}
                       className="cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
-                      onClick={() => openProjectDetail(project)}
+                      onClick={() => router.push(`/projects/${project.id}`)}
                     >
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between gap-2">
@@ -314,7 +276,7 @@ export default function ProjectsPage() {
                             {project.description}
                           </p>
                         )}
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
                           {project.github_url && (
                             <Badge variant="outline" className="text-xs">
                               GitHub
@@ -325,8 +287,22 @@ export default function ProjectsPage() {
                               Dashboard
                             </Badge>
                           )}
+                          {(project.ranking ?? 0) > 0 && (
+                            <div className="flex items-center gap-0.5 ml-auto">
+                              {[1, 2, 3, 4, 5].map((v) => (
+                                <Star
+                                  key={v}
+                                  className={`h-3 w-3 ${
+                                    v <= (project.ranking ?? 0)
+                                      ? "fill-yellow-400 text-yellow-400"
+                                      : "text-muted-foreground/20"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                          )}
                           {(commentCounts[project.id] || 0) > 0 && (
-                            <div className="flex items-center gap-1 ml-auto text-muted-foreground">
+                            <div className="flex items-center gap-1 text-muted-foreground">
                               <MessageSquare className="h-3 w-3" />
                               <span className="text-xs">
                                 {commentCounts[project.id]}
@@ -343,88 +319,6 @@ export default function ProjectsPage() {
           );
         })}
       </div>
-
-      {/* Detail Dialog */}
-      <Dialog
-        open={!!selectedProject}
-        onOpenChange={(open) => !open && setSelectedProject(null)}
-      >
-        <DialogContent className="max-w-md">
-          {selectedProject && (
-            <>
-              <DialogHeader>
-                <div className="flex items-start justify-between gap-2 pr-6">
-                  <DialogTitle>{selectedProject.name}</DialogTitle>
-                  <div className="flex gap-1 shrink-0">
-                    <button
-                      onClick={(e) => {
-                        setSelectedProject(null);
-                        openEditProject(selectedProject, e);
-                      }}
-                      className="p-1 rounded hover:bg-muted"
-                      title="Edit"
-                    >
-                      <Pencil className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        openDeleteProject(selectedProject, e);
-                      }}
-                      className="p-1 rounded hover:bg-destructive/10"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </button>
-                  </div>
-                </div>
-                <DialogDescription>
-                  {selectedProject.description || "No description"}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline">{selectedProject.status}</Badge>
-                {selectedProject.github_url && (
-                  <a
-                    href={selectedProject.github_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Badge variant="secondary" className="cursor-pointer">
-                      GitHub
-                    </Badge>
-                  </a>
-                )}
-                {selectedProject.dashboard_url && (
-                  <a
-                    href={selectedProject.dashboard_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Badge variant="secondary" className="cursor-pointer">
-                      Live Dashboard
-                    </Badge>
-                  </a>
-                )}
-              </div>
-              <div className="border-t pt-3">
-                {loadingComments ? (
-                  <p className="text-xs text-muted-foreground">
-                    Loading comments...
-                  </p>
-                ) : (
-                  <CommentsSection
-                    comments={projectComments}
-                    projectId={selectedProject.id}
-                    onCommentAdded={handleCommentAdded}
-                  />
-                )}
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Create / Edit Modal */}
       <ProjectFormModal
