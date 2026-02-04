@@ -19,8 +19,30 @@ export interface Project {
   ranking: number | null;
   github_url: string | null;
   dashboard_url: string | null;
+  plan: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Task {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  status: "pending" | "in-progress" | "complete" | "cancelled";
+  due_date: string | null;
+  cron_job_id: string | null;
+  created_at: string;
+  completed_at: string | null;
+  completion_notes: string | null;
+}
+
+export interface ProjectHistory {
+  id: string;
+  project_id: string;
+  entry_date: string;
+  summary: string;
+  details: string | null;
 }
 
 export interface Comment {
