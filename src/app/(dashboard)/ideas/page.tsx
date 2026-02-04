@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +12,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { CommentsSection } from "@/components/comments-section";
-import { Plus, MessageSquare } from "lucide-react";
+import { IdeaFormModal } from "@/components/idea-form-modal";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
+import { Plus, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Idea, Comment } from "@/lib/types";
+import { toast } from "@/hooks/use-toast";
 
 const columns = [
   { id: "new" as const, label: "New", color: "bg-blue-500" },
@@ -26,44 +29,51 @@ const columns = [
 export default function IdeasPage() {
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [loading, setLoading] = useState(true);
-  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>(
+    {}
+  );
   const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
   const [ideaComments, setIdeaComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
 
-  useEffect(() => {
-    async function fetchIdeas() {
-      const { data, error } = await supabase
-        .from("ideas")
-        .select("*")
-        .order("created_at", { ascending: false });
+  // CRUD modal state
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingIdea, setEditingIdea] = useState<Idea | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingIdea, setDeletingIdea] = useState<Idea | null>(null);
 
-      if (error) {
-        console.error("Error fetching ideas:", error);
-      } else {
-        setIdeas(data ?? []);
-      }
+  const fetchIdeas = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("ideas")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-      // Fetch comment counts per idea
-      const { data: comments } = await supabase
-        .from("comments")
-        .select("idea_id");
-
-      if (comments) {
-        const counts: Record<string, number> = {};
-        comments.forEach((c: { idea_id: string | null }) => {
-          if (c.idea_id) {
-            counts[c.idea_id] = (counts[c.idea_id] || 0) + 1;
-          }
-        });
-        setCommentCounts(counts);
-      }
-
-      setLoading(false);
+    if (error) {
+      console.error("Error fetching ideas:", error);
+    } else {
+      setIdeas(data ?? []);
     }
 
-    fetchIdeas();
+    const { data: comments } = await supabase
+      .from("comments")
+      .select("idea_id");
+
+    if (comments) {
+      const counts: Record<string, number> = {};
+      comments.forEach((c: { idea_id: string | null }) => {
+        if (c.idea_id) {
+          counts[c.idea_id] = (counts[c.idea_id] || 0) + 1;
+        }
+      });
+      setCommentCounts(counts);
+    }
+
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    fetchIdeas();
+  }, [fetchIdeas]);
 
   async function openIdeaDetail(idea: Idea) {
     setSelectedIdea(idea);
@@ -89,6 +99,136 @@ export default function IdeasPage() {
     }
   }
 
+  // --- Create / Edit ---
+  async function handleIdeaSubmit(data: {
+    title: string;
+    description: string;
+    priority: "low" | "medium" | "high";
+    status: "new" | "evaluating" | "approved" | "archived";
+  }) {
+    if (editingIdea) {
+      // Optimistic update
+      const previous = ideas;
+      const updated: Idea = {
+        ...editingIdea,
+        title: data.title,
+        description: data.description || null,
+        priority: data.priority,
+        status: data.status,
+        updated_at: new Date().toISOString(),
+      };
+      setIdeas((prev) =>
+        prev.map((i) => (i.id === editingIdea.id ? updated : i))
+      );
+      if (selectedIdea?.id === editingIdea.id) {
+        setSelectedIdea(updated);
+      }
+
+      const { error } = await supabase
+        .from("ideas")
+        .update({
+          title: data.title,
+          description: data.description || null,
+          priority: data.priority,
+          status: data.status,
+        })
+        .eq("id", editingIdea.id);
+
+      if (error) {
+        setIdeas(previous);
+        if (selectedIdea?.id === editingIdea.id) {
+          setSelectedIdea(editingIdea);
+        }
+        toast({
+          title: "Error updating idea",
+          description: error.message,
+          variant: "destructive",
+        });
+        throw error;
+      }
+
+      toast({
+        title: "Idea updated",
+        description: `"${data.title}" has been updated.`,
+      });
+    } else {
+      // Create new
+      const { data: newIdea, error } = await supabase
+        .from("ideas")
+        .insert({
+          title: data.title,
+          description: data.description || null,
+          priority: data.priority,
+          status: data.status,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        toast({
+          title: "Error creating idea",
+          description: error.message,
+          variant: "destructive",
+        });
+        throw error;
+      }
+
+      setIdeas((prev) => [newIdea as Idea, ...prev]);
+      toast({
+        title: "Idea created",
+        description: `"${data.title}" has been added to the board.`,
+      });
+    }
+  }
+
+  // --- Delete ---
+  async function handleDeleteIdea() {
+    if (!deletingIdea) return;
+
+    const previous = ideas;
+    setIdeas((prev) => prev.filter((i) => i.id !== deletingIdea.id));
+    if (selectedIdea?.id === deletingIdea.id) {
+      setSelectedIdea(null);
+    }
+
+    const { error } = await supabase
+      .from("ideas")
+      .delete()
+      .eq("id", deletingIdea.id);
+
+    if (error) {
+      setIdeas(previous);
+      toast({
+        title: "Error deleting idea",
+        description: error.message,
+        variant: "destructive",
+      });
+      throw error;
+    }
+
+    toast({
+      title: "Idea deleted",
+      description: `"${deletingIdea.title}" has been removed.`,
+    });
+  }
+
+  function openNewIdea() {
+    setEditingIdea(null);
+    setFormOpen(true);
+  }
+
+  function openEditIdea(idea: Idea, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditingIdea(idea);
+    setFormOpen(true);
+  }
+
+  function openDeleteIdea(idea: Idea, e: React.MouseEvent) {
+    e.stopPropagation();
+    setDeletingIdea(idea);
+    setDeleteOpen(true);
+  }
+
   const getIdeasForColumn = (status: string) =>
     ideas.filter((idea) => idea.status === status);
 
@@ -109,7 +249,7 @@ export default function IdeasPage() {
             Kanban board for partnership ideas.
           </p>
         </div>
-        <Button>
+        <Button onClick={openNewIdea}>
           <Plus className="mr-2 h-4 w-4" />
           New Idea
         </Button>
@@ -140,11 +280,29 @@ export default function IdeasPage() {
                   {columnIdeas.map((idea) => (
                     <Card
                       key={idea.id}
-                      className="cursor-pointer hover:border-primary/50 hover:shadow-md transition-all"
+                      className="cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
                       onClick={() => openIdeaDetail(idea)}
                     >
                       <CardContent className="p-4">
-                        <h3 className="font-medium text-sm">{idea.title}</h3>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-medium text-sm">{idea.title}</h3>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                            <button
+                              onClick={(e) => openEditIdea(idea, e)}
+                              className="p-1 rounded hover:bg-muted"
+                              title="Edit"
+                            >
+                              <Pencil className="h-3 w-3 text-muted-foreground" />
+                            </button>
+                            <button
+                              onClick={(e) => openDeleteIdea(idea, e)}
+                              className="p-1 rounded hover:bg-destructive/10"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </button>
+                          </div>
+                        </div>
                         {idea.description && (
                           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                             {idea.description}
@@ -187,6 +345,7 @@ export default function IdeasPage() {
         })}
       </div>
 
+      {/* Detail Dialog */}
       <Dialog
         open={!!selectedIdea}
         onOpenChange={(open) => !open && setSelectedIdea(null)}
@@ -195,7 +354,30 @@ export default function IdeasPage() {
           {selectedIdea && (
             <>
               <DialogHeader>
-                <DialogTitle>{selectedIdea.title}</DialogTitle>
+                <div className="flex items-start justify-between gap-2 pr-6">
+                  <DialogTitle>{selectedIdea.title}</DialogTitle>
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        setSelectedIdea(null);
+                        openEditIdea(selectedIdea, e);
+                      }}
+                      className="p-1 rounded hover:bg-muted"
+                      title="Edit"
+                    >
+                      <Pencil className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        openDeleteIdea(selectedIdea, e);
+                      }}
+                      className="p-1 rounded hover:bg-destructive/10"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </button>
+                  </div>
+                </div>
                 <DialogDescription>
                   {selectedIdea.description || "No description"}
                 </DialogDescription>
@@ -234,6 +416,23 @@ export default function IdeasPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Create / Edit Modal */}
+      <IdeaFormModal
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        idea={editingIdea}
+        onSubmit={handleIdeaSubmit}
+      />
+
+      {/* Delete Confirmation */}
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete Idea"
+        description={`Are you sure you want to delete "${deletingIdea?.title}"? This action cannot be undone.`}
+        onConfirm={handleDeleteIdea}
+      />
     </div>
   );
 }
