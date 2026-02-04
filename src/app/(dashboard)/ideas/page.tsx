@@ -4,9 +4,17 @@ import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { CommentsSection } from "@/components/comments-section";
+import { Plus, MessageSquare } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { Idea } from "@/lib/types";
+import { Idea, Comment } from "@/lib/types";
 
 const columns = [
   { id: "new" as const, label: "New", color: "bg-blue-500" },
@@ -18,6 +26,10 @@ const columns = [
 export default function IdeasPage() {
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [loading, setLoading] = useState(true);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
+  const [ideaComments, setIdeaComments] = useState<Comment[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
 
   useEffect(() => {
     async function fetchIdeas() {
@@ -31,11 +43,51 @@ export default function IdeasPage() {
       } else {
         setIdeas(data ?? []);
       }
+
+      // Fetch comment counts per idea
+      const { data: comments } = await supabase
+        .from("comments")
+        .select("idea_id");
+
+      if (comments) {
+        const counts: Record<string, number> = {};
+        comments.forEach((c: { idea_id: string | null }) => {
+          if (c.idea_id) {
+            counts[c.idea_id] = (counts[c.idea_id] || 0) + 1;
+          }
+        });
+        setCommentCounts(counts);
+      }
+
       setLoading(false);
     }
 
     fetchIdeas();
   }, []);
+
+  async function openIdeaDetail(idea: Idea) {
+    setSelectedIdea(idea);
+    setLoadingComments(true);
+
+    const { data } = await supabase
+      .from("comments")
+      .select("*")
+      .eq("idea_id", idea.id)
+      .order("created_at", { ascending: true });
+
+    setIdeaComments((data as Comment[]) ?? []);
+    setLoadingComments(false);
+  }
+
+  function handleCommentAdded(comment: Comment) {
+    setIdeaComments((prev) => [...prev, comment]);
+    if (selectedIdea) {
+      setCommentCounts((prev) => ({
+        ...prev,
+        [selectedIdea.id]: (prev[selectedIdea.id] || 0) + 1,
+      }));
+    }
+  }
 
   const getIdeasForColumn = (status: string) =>
     ideas.filter((idea) => idea.status === status);
@@ -86,7 +138,11 @@ export default function IdeasPage() {
               ) : (
                 <div className="space-y-2">
                   {columnIdeas.map((idea) => (
-                    <Card key={idea.id}>
+                    <Card
+                      key={idea.id}
+                      className="cursor-pointer hover:border-primary/50 hover:shadow-md transition-all"
+                      onClick={() => openIdeaDetail(idea)}
+                    >
                       <CardContent className="p-4">
                         <h3 className="font-medium text-sm">{idea.title}</h3>
                         {idea.description && (
@@ -112,6 +168,14 @@ export default function IdeasPage() {
                               {idea.source}
                             </Badge>
                           )}
+                          {(commentCounts[idea.id] || 0) > 0 && (
+                            <div className="flex items-center gap-1 ml-auto text-muted-foreground">
+                              <MessageSquare className="h-3 w-3" />
+                              <span className="text-xs">
+                                {commentCounts[idea.id]}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -122,6 +186,54 @@ export default function IdeasPage() {
           );
         })}
       </div>
+
+      <Dialog
+        open={!!selectedIdea}
+        onOpenChange={(open) => !open && setSelectedIdea(null)}
+      >
+        <DialogContent className="max-w-md">
+          {selectedIdea && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedIdea.title}</DialogTitle>
+                <DialogDescription>
+                  {selectedIdea.description || "No description"}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex items-center gap-2">
+                {selectedIdea.priority && (
+                  <Badge
+                    variant={
+                      selectedIdea.priority === "high"
+                        ? "destructive"
+                        : "secondary"
+                    }
+                  >
+                    {selectedIdea.priority}
+                  </Badge>
+                )}
+                <Badge variant="outline">{selectedIdea.status}</Badge>
+                {selectedIdea.source && (
+                  <Badge variant="outline">{selectedIdea.source}</Badge>
+                )}
+              </div>
+              <div className="border-t pt-3">
+                {loadingComments ? (
+                  <p className="text-xs text-muted-foreground">
+                    Loading comments...
+                  </p>
+                ) : (
+                  <CommentsSection
+                    comments={ideaComments}
+                    ideaId={selectedIdea.id}
+                    onCommentAdded={handleCommentAdded}
+                  />
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

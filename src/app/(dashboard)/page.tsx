@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Lightbulb, FolderKanban, MessageSquare } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -8,17 +9,20 @@ import { supabase } from "@/lib/supabase";
 export default function DashboardPage() {
   const [ideaCount, setIdeaCount] = useState(0);
   const [projectCount, setProjectCount] = useState(0);
+  const [commentCount, setCommentCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchCounts() {
-      const [ideasResult, projectsResult] = await Promise.all([
+      const [ideasResult, projectsResult, commentsResult] = await Promise.all([
         supabase.from("ideas").select("*", { count: "exact", head: true }),
         supabase.from("projects").select("*", { count: "exact", head: true }),
+        supabase.from("comments").select("*", { count: "exact", head: true }),
       ]);
 
       if (ideasResult.count !== null) setIdeaCount(ideasResult.count);
       if (projectsResult.count !== null) setProjectCount(projectsResult.count);
+      if (commentsResult.count !== null) setCommentCount(commentsResult.count);
       setLoading(false);
     }
 
@@ -35,43 +39,49 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Ideas</CardTitle>
-            <Lightbulb className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {loading ? "..." : ideaCount}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Ideas in your pipeline
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Active Projects
-            </CardTitle>
-            <FolderKanban className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {loading ? "..." : projectCount}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Projects in progress
-            </p>
-          </CardContent>
-        </Card>
+        <Link href="/ideas">
+          <Card className="transition-colors hover:border-primary/50 hover:shadow-md cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Ideas</CardTitle>
+              <Lightbulb className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {loading ? "..." : ideaCount}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Ideas in your pipeline
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/projects">
+          <Card className="transition-colors hover:border-primary/50 hover:shadow-md cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                Active Projects
+              </CardTitle>
+              <FolderKanban className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {loading ? "..." : projectCount}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Projects in progress
+              </p>
+            </CardContent>
+          </Card>
+        </Link>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Comments</CardTitle>
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div>
+            <div className="text-2xl font-bold">
+              {loading ? "..." : commentCount}
+            </div>
             <p className="text-xs text-muted-foreground">
               Threaded discussions
             </p>

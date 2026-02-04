@@ -20,3 +20,12 @@ export interface Project {
   created_at: string;
   updated_at: string;
 }
+
+export interface Comment {
+  id: string;
+  content: string;
+  author: "Richard" | "Shaka";
+  idea_id: string | null;
+  project_id: string | null;
+  created_at: string;
+}
