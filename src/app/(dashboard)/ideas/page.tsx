@@ -1,20 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { CommentsSection } from "@/components/comments-section";
-import { Plus, MessageSquare } from "lucide-react";
+import { IdeaFormModal } from "@/components/idea-form-modal";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
+import { Plus, MessageSquare, Pencil, Trash2, Star } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { Idea, Comment } from "@/lib/types";
+import { Idea } from "@/lib/types";
+import { toast } from "@/hooks/use-toast";
 
 const columns = [
   { id: "new" as const, label: "New", color: "bg-blue-500" },
@@ -24,69 +20,175 @@ const columns = [
 ];
 
 export default function IdeasPage() {
+  const router = useRouter();
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [loading, setLoading] = useState(true);
-  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
-  const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
-  const [ideaComments, setIdeaComments] = useState<Comment[]>([]);
-  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>(
+    {}
+  );
 
-  useEffect(() => {
-    async function fetchIdeas() {
-      const { data, error } = await supabase
-        .from("ideas")
-        .select("*")
-        .order("created_at", { ascending: false });
+  // CRUD modal state
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingIdea, setEditingIdea] = useState<Idea | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingIdea, setDeletingIdea] = useState<Idea | null>(null);
 
-      if (error) {
-        console.error("Error fetching ideas:", error);
-      } else {
-        setIdeas(data ?? []);
-      }
+  const fetchIdeas = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("ideas")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-      // Fetch comment counts per idea
-      const { data: comments } = await supabase
-        .from("comments")
-        .select("idea_id");
-
-      if (comments) {
-        const counts: Record<string, number> = {};
-        comments.forEach((c: { idea_id: string | null }) => {
-          if (c.idea_id) {
-            counts[c.idea_id] = (counts[c.idea_id] || 0) + 1;
-          }
-        });
-        setCommentCounts(counts);
-      }
-
-      setLoading(false);
+    if (error) {
+      console.error("Error fetching ideas:", error);
+    } else {
+      setIdeas(data ?? []);
     }
 
-    fetchIdeas();
+    const { data: comments } = await supabase
+      .from("comments")
+      .select("idea_id");
+
+    if (comments) {
+      const counts: Record<string, number> = {};
+      comments.forEach((c: { idea_id: string | null }) => {
+        if (c.idea_id) {
+          counts[c.idea_id] = (counts[c.idea_id] || 0) + 1;
+        }
+      });
+      setCommentCounts(counts);
+    }
+
+    setLoading(false);
   }, []);
 
-  async function openIdeaDetail(idea: Idea) {
-    setSelectedIdea(idea);
-    setLoadingComments(true);
+  useEffect(() => {
+    fetchIdeas();
+  }, [fetchIdeas]);
 
-    const { data } = await supabase
-      .from("comments")
-      .select("*")
-      .eq("idea_id", idea.id)
-      .order("created_at", { ascending: true });
+  // --- Create / Edit ---
+  async function handleIdeaSubmit(data: {
+    title: string;
+    description: string;
+    priority: "low" | "medium" | "high";
+    status: "new" | "evaluating" | "approved" | "archived";
+    ranking: number;
+  }) {
+    if (editingIdea) {
+      // Optimistic update
+      const previous = ideas;
+      const updated: Idea = {
+        ...editingIdea,
+        title: data.title,
+        description: data.description || null,
+        priority: data.priority,
+        status: data.status,
+        ranking: data.ranking,
+        updated_at: new Date().toISOString(),
+      };
+      setIdeas((prev) =>
+        prev.map((i) => (i.id === editingIdea.id ? updated : i))
+      );
 
-    setIdeaComments((data as Comment[]) ?? []);
-    setLoadingComments(false);
+      const { error } = await supabase
+        .from("ideas")
+        .update({
+          title: data.title,
+          description: data.description || null,
+          priority: data.priority,
+          status: data.status,
+          ranking: data.ranking,
+        })
+        .eq("id", editingIdea.id);
+
+      if (error) {
+        setIdeas(previous);
+        toast({
+          title: "Error updating idea",
+          description: error.message,
+          variant: "destructive",
+        });
+        throw error;
+      }
+
+      toast({
+        title: "Idea updated",
+        description: `"${data.title}" has been updated.`,
+      });
+    } else {
+      // Create new
+      const { data: newIdea, error } = await supabase
+        .from("ideas")
+        .insert({
+          title: data.title,
+          description: data.description || null,
+          priority: data.priority,
+          status: data.status,
+          ranking: data.ranking,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        toast({
+          title: "Error creating idea",
+          description: error.message,
+          variant: "destructive",
+        });
+        throw error;
+      }
+
+      setIdeas((prev) => [newIdea as Idea, ...prev]);
+      toast({
+        title: "Idea created",
+        description: `"${data.title}" has been added to the board.`,
+      });
+    }
   }
 
-  function handleCommentAdded(comment: Comment) {
-    setIdeaComments((prev) => [...prev, comment]);
-    if (selectedIdea) {
-      setCommentCounts((prev) => ({
-        ...prev,
-        [selectedIdea.id]: (prev[selectedIdea.id] || 0) + 1,
-      }));
+  // --- Delete ---
+  async function handleDeleteIdea() {
+    if (!deletingIdea) return;
+
+    const previous = ideas;
+    setIdeas((prev) => prev.filter((i) => i.id !== deletingIdea.id));
+
+    const { error } = await supabase
+      .from("ideas")
+      .delete()
+      .eq("id", deletingIdea.id);
+
+    if (error) {
+      setIdeas(previous);
+      toast({
+        title: "Error deleting idea",
+        description: error.message,
+        variant: "destructive",
+      });
+      throw error;
     }
+
+    toast({
+      title: "Idea deleted",
+      description: `"${deletingIdea.title}" has been removed.`,
+    });
+  }
+
+  function openNewIdea() {
+    setEditingIdea(null);
+    setFormOpen(true);
+  }
+
+  function openEditIdea(idea: Idea, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditingIdea(idea);
+    setFormOpen(true);
+  }
+
+  function openDeleteIdea(idea: Idea, e: React.MouseEvent) {
+    e.stopPropagation();
+    setDeletingIdea(idea);
+    setDeleteOpen(true);
   }
 
   const getIdeasForColumn = (status: string) =>
@@ -109,7 +211,7 @@ export default function IdeasPage() {
             Kanban board for partnership ideas.
           </p>
         </div>
-        <Button>
+        <Button onClick={openNewIdea}>
           <Plus className="mr-2 h-4 w-4" />
           New Idea
         </Button>
@@ -140,17 +242,35 @@ export default function IdeasPage() {
                   {columnIdeas.map((idea) => (
                     <Card
                       key={idea.id}
-                      className="cursor-pointer hover:border-primary/50 hover:shadow-md transition-all"
-                      onClick={() => openIdeaDetail(idea)}
+                      className="cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
+                      onClick={() => router.push(`/ideas/${idea.id}`)}
                     >
                       <CardContent className="p-4">
-                        <h3 className="font-medium text-sm">{idea.title}</h3>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-medium text-sm">{idea.title}</h3>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                            <button
+                              onClick={(e) => openEditIdea(idea, e)}
+                              className="p-1 rounded hover:bg-muted"
+                              title="Edit"
+                            >
+                              <Pencil className="h-3 w-3 text-muted-foreground" />
+                            </button>
+                            <button
+                              onClick={(e) => openDeleteIdea(idea, e)}
+                              className="p-1 rounded hover:bg-destructive/10"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </button>
+                          </div>
+                        </div>
                         {idea.description && (
                           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                             {idea.description}
                           </p>
                         )}
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
                           {idea.priority && (
                             <Badge
                               variant={
@@ -168,8 +288,22 @@ export default function IdeasPage() {
                               {idea.source}
                             </Badge>
                           )}
+                          {(idea.ranking ?? 0) > 0 && (
+                            <div className="flex items-center gap-0.5 ml-auto">
+                              {[1, 2, 3, 4, 5].map((v) => (
+                                <Star
+                                  key={v}
+                                  className={`h-3 w-3 ${
+                                    v <= (idea.ranking ?? 0)
+                                      ? "fill-yellow-400 text-yellow-400"
+                                      : "text-muted-foreground/20"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                          )}
                           {(commentCounts[idea.id] || 0) > 0 && (
-                            <div className="flex items-center gap-1 ml-auto text-muted-foreground">
+                            <div className="flex items-center gap-1 text-muted-foreground">
                               <MessageSquare className="h-3 w-3" />
                               <span className="text-xs">
                                 {commentCounts[idea.id]}
@@ -187,53 +321,22 @@ export default function IdeasPage() {
         })}
       </div>
 
-      <Dialog
-        open={!!selectedIdea}
-        onOpenChange={(open) => !open && setSelectedIdea(null)}
-      >
-        <DialogContent className="max-w-md">
-          {selectedIdea && (
-            <>
-              <DialogHeader>
-                <DialogTitle>{selectedIdea.title}</DialogTitle>
-                <DialogDescription>
-                  {selectedIdea.description || "No description"}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex items-center gap-2">
-                {selectedIdea.priority && (
-                  <Badge
-                    variant={
-                      selectedIdea.priority === "high"
-                        ? "destructive"
-                        : "secondary"
-                    }
-                  >
-                    {selectedIdea.priority}
-                  </Badge>
-                )}
-                <Badge variant="outline">{selectedIdea.status}</Badge>
-                {selectedIdea.source && (
-                  <Badge variant="outline">{selectedIdea.source}</Badge>
-                )}
-              </div>
-              <div className="border-t pt-3">
-                {loadingComments ? (
-                  <p className="text-xs text-muted-foreground">
-                    Loading comments...
-                  </p>
-                ) : (
-                  <CommentsSection
-                    comments={ideaComments}
-                    ideaId={selectedIdea.id}
-                    onCommentAdded={handleCommentAdded}
-                  />
-                )}
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Create / Edit Modal */}
+      <IdeaFormModal
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        idea={editingIdea}
+        onSubmit={handleIdeaSubmit}
+      />
+
+      {/* Delete Confirmation */}
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete Idea"
+        description={`Are you sure you want to delete "${deletingIdea?.title}"? This action cannot be undone.`}
+        onConfirm={handleDeleteIdea}
+      />
     </div>
   );
 }

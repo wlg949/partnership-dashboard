@@ -4,6 +4,7 @@ export interface Idea {
   description: string | null;
   status: "new" | "evaluating" | "approved" | "archived";
   priority: "low" | "medium" | "high" | null;
+  ranking: number | null;
   source: string | null;
   project_id: string | null;
   created_at: string;
@@ -15,6 +16,7 @@ export interface Project {
   name: string;
   description: string | null;
   status: "planning" | "in-progress" | "review" | "complete";
+  ranking: number | null;
   github_url: string | null;
   dashboard_url: string | null;
   created_at: string;
@@ -24,8 +26,16 @@ export interface Project {
 export interface Comment {
   id: string;
   content: string;
-  author: "Richard" | "Shaka";
+  author: string;
   idea_id: string | null;
   project_id: string | null;
   created_at: string;
 }
+
+export const RANKING_LABELS: Record<number, string> = {
+  1: "Not happening",
+  2: "Maybe later",
+  3: "Under consideration",
+  4: "Planned",
+  5: "Actively working on",
+};

@@ -21,7 +21,6 @@ export function CommentsSection({
   onCommentAdded,
 }: CommentsSectionProps) {
   const [newComment, setNewComment] = useState("");
-  const [author, setAuthor] = useState<"Richard" | "Shaka">("Richard");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -33,7 +32,7 @@ export function CommentsSection({
       .from("comments")
       .insert({
         content: newComment.trim(),
-        author,
+        author: "Richard",
         idea_id: ideaId || null,
         project_id: projectId || null,
       })
@@ -59,16 +58,19 @@ export function CommentsSection({
           No comments yet. Start the conversation.
         </p>
       ) : (
-        <div className="space-y-2 max-h-[200px] overflow-y-auto">
+        <div className="space-y-2 max-h-[300px] overflow-y-auto">
           {comments.map((comment) => (
             <div
               key={comment.id}
               className="rounded-md border p-2 text-sm space-y-1"
             >
               <div className="flex items-center justify-between">
-                <span className="font-medium text-xs">{comment.author}</span>
                 <span className="text-xs text-muted-foreground">
-                  {new Date(comment.created_at).toLocaleDateString()}
+                  {new Date(comment.created_at).toLocaleDateString()} &middot;{" "}
+                  {new Date(comment.created_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </span>
               </div>
               <p className="text-xs">{comment.content}</p>
@@ -78,14 +80,6 @@ export function CommentsSection({
       )}
 
       <form onSubmit={handleSubmit} className="flex gap-2">
-        <select
-          value={author}
-          onChange={(e) => setAuthor(e.target.value as "Richard" | "Shaka")}
-          className="h-9 rounded-md border border-input bg-transparent px-2 text-xs"
-        >
-          <option value="Richard">Richard</option>
-          <option value="Shaka">Shaka</option>
-        </select>
         <Input
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
