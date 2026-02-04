@@ -1,7 +1,30 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Lightbulb, FolderKanban, MessageSquare } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 export default function DashboardPage() {
+  const [ideaCount, setIdeaCount] = useState(0);
+  const [projectCount, setProjectCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchCounts() {
+      const [ideasResult, projectsResult] = await Promise.all([
+        supabase.from("ideas").select("*", { count: "exact", head: true }),
+        supabase.from("projects").select("*", { count: "exact", head: true }),
+      ]);
+
+      if (ideasResult.count !== null) setIdeaCount(ideasResult.count);
+      if (projectsResult.count !== null) setProjectCount(projectsResult.count);
+      setLoading(false);
+    }
+
+    fetchCounts();
+  }, []);
+
   return (
     <div className="space-y-6">
       <div>
@@ -18,7 +41,9 @@ export default function DashboardPage() {
             <Lightbulb className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div>
+            <div className="text-2xl font-bold">
+              {loading ? "..." : ideaCount}
+            </div>
             <p className="text-xs text-muted-foreground">
               Ideas in your pipeline
             </p>
@@ -32,7 +57,9 @@ export default function DashboardPage() {
             <FolderKanban className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0</div>
+            <div className="text-2xl font-bold">
+              {loading ? "..." : projectCount}
+            </div>
             <p className="text-xs text-muted-foreground">
               Projects in progress
             </p>
